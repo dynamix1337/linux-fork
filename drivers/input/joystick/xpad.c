@@ -76,7 +76,7 @@
 
 #define XPAD_PKT_LEN 64
 
-/* 
+/*
  * The Guitar Hero Live (GHL) Xbox One dongles require a poke
  * every 8 seconds.
  */
@@ -457,7 +457,7 @@ static const signed short xpad_btn_paddles[] = {
 	-1						/* terminating entry */
 };
 
-/* used for GHL dpad mapping */
+/* used for the dmap mapping of the GHL Xbox One dongle */
 static const struct {int x; int y; } xpad_dpad_ghl[] = {
 	{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1},
 	{0, 0}
@@ -687,8 +687,8 @@ static const u8 xboxone_rumbleend_init[] = {
 	0x00, GIP_MOTOR_ALL, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
-/* 
- * Magic data for the GHL Xbox One dongles sniffed with a USB 
+/*
+ * Magic data for the GHL Xbox One dongles sniffed with a USB
  * protocol analyzer.
  */
 static const char ghl_xboxone_magic_data[] = {
@@ -773,8 +773,8 @@ struct usb_xpad {
 	struct work_struct work;	/* init/remove device from callback */
 	time64_t mode_btn_down_ts;
 	int quirks;
-	struct urb *ghl_urb;		/* URB for GHL Xbox One magic data */
-	struct timer_list ghl_poke_timer;	/* timer for periodic poke of GHL magic data */
+	struct urb *ghl_urb;		/* URB for GHL Xbox One dongle magic data */
+	struct timer_list ghl_poke_timer;	/* timer for periodic poke of Xbox One dongle with magic data */
 };
 
 static int xpad_init_input(struct usb_xpad *xpad);
@@ -1236,7 +1236,7 @@ static void xpadone_process_packet(struct usb_xpad *xpad, u16 cmd, unsigned char
 
 		do_sync = true;
 	} else if (data[0] == 0X21) { /* The main valid packet type for GHL inputs */
-		/* Mapping chosen to be coherent with GHL dongles of other consoles */
+		/* Mapping based on drivers/hid/hid-sony.c to remain coherent with other GHL dongles */
 		/* The 6 fret buttons */
 		input_report_key(dev, BTN_A, data[4] & BIT(0));
 		input_report_key(dev, BTN_B, data[4] & BIT(1));
@@ -1996,9 +1996,8 @@ static void xpad_set_up_abs(struct input_dev *input_dev, signed short abs)
 	case ABS_X:
 	case ABS_Y:
 		/* GHL Strum bar */
-		if ((xpad->xtype == XTYPE_XBOXONE) && (xpad->quirks & QUIRK_GHL_XBOXONE)) {
+		if ((xpad->xtype == XTYPE_XBOXONE) && (xpad->quirks & QUIRK_GHL_XBOXONE))
 			input_set_abs_params(input_dev, abs, -32768, 32767, 0, 0);
-		}
 		break;
 	case ABS_RX:
 	case ABS_RY:	/* the two sticks */
@@ -2006,9 +2005,8 @@ static void xpad_set_up_abs(struct input_dev *input_dev, signed short abs)
 		break;
 	case ABS_Z:
 		/* GHL Tilt sensor */
-		if ((xpad->xtype == XTYPE_XBOXONE) && (xpad->quirks & QUIRK_GHL_XBOXONE)) {
+		if ((xpad->xtype == XTYPE_XBOXONE) && (xpad->quirks & QUIRK_GHL_XBOXONE))
 			input_set_abs_params(input_dev, abs, -32768, 32767, 0, 0);
-		}
 		break;
 	case ABS_RZ:	/* the triggers (if mapped to axes) */
 		if (xpad->xtype == XTYPE_XBOXONE) {
