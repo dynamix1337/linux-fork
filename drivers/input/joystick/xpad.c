@@ -113,7 +113,7 @@
 #define PKT_XBE2_FW_5_EARLY 3
 #define PKT_XBE2_FW_5_11    4
 
-#define QUIRK_GHL_XBOXONE	(1 << 0)
+#define QUIRK_GHL_XBOXONE	BIT(0)
 
 static bool dpad_to_buttons;
 module_param(dpad_to_buttons, bool, S_IRUGO);
@@ -774,7 +774,8 @@ struct usb_xpad {
 	time64_t mode_btn_down_ts;
 	int quirks;
 	struct urb *ghl_urb;		/* URB for GHL Xbox One dongle magic data */
-	struct timer_list ghl_poke_timer;	/* timer for periodic poke of Xbox One dongle with magic data */
+	/* timer for periodic poke of Xbox One dongle with magic data */
+	struct timer_list ghl_poke_timer;
 };
 
 static int xpad_init_input(struct usb_xpad *xpad);
@@ -785,7 +786,8 @@ static void xpad360w_poweroff_controller(struct usb_xpad *xpad);
 /*
  *	ghl_magic_poke_cb
  *
- *	Callback function that resets the timer for the next magic data poke.
+ *	Callback function that resets the timer for the next magic data poke
+ *	as required by the GHL Xbox One dongle.
  */
 static void ghl_magic_poke_cb(struct urb *urb)
 {
@@ -794,13 +796,13 @@ static void ghl_magic_poke_cb(struct urb *urb)
 	if (urb->status < 0)
 		pr_warn("URB transfer failed.\n");
 
-	mod_timer(&xpad->ghl_poke_timer, jiffies + GHL_GUITAR_POKE_INTERVAL*HZ);
+	mod_timer(&xpad->ghl_poke_timer, jiffies + GHL_GUITAR_POKE_INTERVAL * HZ);
 }
 
 /*
  *	ghl_magic_poke
  *
- *	Submits the GHL magic_data URB.
+ *	Submits the magic_data URB as required by the GHL Xbox One dongle.
  */
 static void ghl_magic_poke(struct timer_list *t)
 {
@@ -815,10 +817,11 @@ static void ghl_magic_poke(struct timer_list *t)
 /*
  *	ghl_init_urb
  *
- *	Prepares the interrupt URB for GHL magic_data.
+ *	Prepares the interrupt URB for magic_data as required by the GHL Xbox One dongle.
  */
 static int ghl_init_urb(struct usb_xpad *xpad, struct usb_device *usbdev,
-		const char ghl_magic_data[], u16 poke_size, struct usb_endpoint_descriptor *ep_irq_out)
+			const char ghl_magic_data[], u16 poke_size,
+			struct usb_endpoint_descriptor *ep_irq_out)
 {
 	u8 *databuf;
 	unsigned int pipe;
@@ -826,15 +829,13 @@ static int ghl_init_urb(struct usb_xpad *xpad, struct usb_device *usbdev,
 	pipe = usb_sndintpipe(usbdev, ep_irq_out->bEndpointAddress);
 
 	databuf = devm_kzalloc(&xpad->udev->dev, poke_size, GFP_ATOMIC);
-	if (databuf == NULL)
+	if (!databuf)
 		return -ENOMEM;
 
 	memcpy(databuf, ghl_magic_data, poke_size);
 
-	usb_fill_int_urb(
-		xpad->ghl_urb, usbdev, pipe,
-		databuf, poke_size,
-		ghl_magic_poke_cb, xpad, ep_irq_out->bInterval);
+	usb_fill_int_urb(xpad->ghl_urb, usbdev, pipe, databuf, poke_size,
+			 ghl_magic_poke_cb, xpad, ep_irq_out->bInterval);
 
 	return 0;
 }
@@ -1236,7 +1237,11 @@ static void xpadone_process_packet(struct usb_xpad *xpad, u16 cmd, unsigned char
 
 		do_sync = true;
 	} else if (data[0] == 0X21) { /* The main valid packet type for GHL inputs */
-		/* Mapping based on drivers/hid/hid-sony.c to remain coherent with other GHL dongles */
+		/* Mapping chosen to be coherent with GHL dongles of other consoles:
+		 * PS2, WiiU & PS4.
+		 *
+		 * Refer to drivers/hid/hid-sony.c.
+		 */
 		/* The 6 fret buttons */
 		input_report_key(dev, BTN_A, data[4] & BIT(0));
 		input_report_key(dev, BTN_B, data[4] & BIT(1));
@@ -1819,7 +1824,7 @@ static int xpad_led_probe(struct usb_xpad *xpad)
 	if (xpad->xtype != XTYPE_XBOX360 && xpad->xtype != XTYPE_XBOX360W)
 		return 0;
 
-	xpad->led = led = kzalloc(sizeof(struct xpad_led), GFP_KERNEL);
+	xpad->led = led = kzalloc(sizeof(*led), GFP_KERNEL);
 	if (!led)
 		return -ENOMEM;
 
@@ -1996,7 +2001,7 @@ static void xpad_set_up_abs(struct input_dev *input_dev, signed short abs)
 	case ABS_X:
 	case ABS_Y:
 		/* GHL Strum bar */
-		if ((xpad->xtype == XTYPE_XBOXONE) && (xpad->quirks & QUIRK_GHL_XBOXONE))
+		if (xpad->xtype == XTYPE_XBOXONE && xpad->quirks & QUIRK_GHL_XBOXONE)
 			input_set_abs_params(input_dev, abs, -32768, 32767, 0, 0);
 		break;
 	case ABS_RX:
@@ -2005,7 +2010,7 @@ static void xpad_set_up_abs(struct input_dev *input_dev, signed short abs)
 		break;
 	case ABS_Z:
 		/* GHL Tilt sensor */
-		if ((xpad->xtype == XTYPE_XBOXONE) && (xpad->quirks & QUIRK_GHL_XBOXONE))
+		if (xpad->xtype == XTYPE_XBOXONE && xpad->quirks & QUIRK_GHL_XBOXONE)
 			input_set_abs_params(input_dev, abs, -32768, 32767, 0, 0);
 		break;
 	case ABS_RZ:	/* the triggers (if mapped to axes) */
@@ -2015,8 +2020,9 @@ static void xpad_set_up_abs(struct input_dev *input_dev, signed short abs)
 				input_set_abs_params(input_dev, abs, -32768, 32767, 0, 0);
 			else
 				input_set_abs_params(input_dev, abs, 0, 1023, 0, 0);
-		} else
+		} else {
 			input_set_abs_params(input_dev, abs, 0, 255, 0, 0);
+		}
 		break;
 	case ABS_HAT0X:
 	case ABS_HAT0Y:	/* the d-pad (only if dpad is mapped to axes */
@@ -2167,7 +2173,7 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
 			break;
 	}
 
-	xpad = kzalloc(sizeof(struct usb_xpad), GFP_KERNEL);
+	xpad = kzalloc(sizeof(*xpad), GFP_KERNEL);
 	if (!xpad)
 		return -ENOMEM;
 
@@ -2323,12 +2329,13 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
 			goto err_deinit_output;
 		}
 
-		error = ghl_init_urb(xpad, udev, ghl_xboxone_magic_data, ARRAY_SIZE(ghl_xboxone_magic_data), ep_irq_out);
+		error = ghl_init_urb(xpad, udev, ghl_xboxone_magic_data,
+				     ARRAY_SIZE(ghl_xboxone_magic_data), ep_irq_out);
 		if (error)
 			goto err_free_ghl_urb;
 
 		timer_setup(&xpad->ghl_poke_timer, ghl_magic_poke, 0);
-		mod_timer(&xpad->ghl_poke_timer, jiffies + GHL_GUITAR_POKE_INTERVAL*HZ);
+		mod_timer(&xpad->ghl_poke_timer, jiffies + GHL_GUITAR_POKE_INTERVAL * HZ);
 	}
 	return 0;
 
